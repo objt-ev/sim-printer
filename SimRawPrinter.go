@@ -3,63 +3,56 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
-	"encoding/json"
-	"io"
-	"strconv"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 type Configuration struct {
-	Rawport int `yaml:"rawport"`
-	OpenViewer bool `yaml:"openviewer"`
+	Rawport int 
+	OpenViewer bool 
 }
 
 func main() {
-	// read config
-	var configuration Configuration
-	var err error
-	configfile, err := os.Open("config.json")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
-	}
+	// params
+	rawPortPtr := flag.Int("rawport", 9100, "tcp port to use for raw printer.")
+	openViewerPtr := flag.Bool("openviewer", true, "Open system viewer automatically")
+	flag.Parse()
 
-	defer configfile.Close()
-	decoder := json.NewDecoder(configfile)
-	err = decoder.Decode(&configuration)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
-	}
+	var configuration Configuration
+	configuration.Rawport = *rawPortPtr
+	configuration.OpenViewer = *openViewerPtr
     
 	// create printjobs folder if it does not exist yet
-	err = os.MkdirAll("./printjobs", os.ModePerm)
+	err := os.MkdirAll("./printjobs", os.ModePerm)
 	checkError(err)
-
 
 	fmt.Println("=========================")
 	fmt.Println("= Simulated Raw Printer =")
 	fmt.Println("=========================")
-	fmt.Println("Settings: RAW port   ", configuration.Rawport)
-	fmt.Println("          OpenViewer ", configuration.OpenViewer)
+	fmt.Printf("Port [%d], Openviewer [%t]\n\n", configuration.Rawport, configuration.OpenViewer)
 
 	rawPrintServer(configuration)
 }
 
 func rawPrintServer(configuration Configuration) {
-	var filename string
+	
 	service := ":" + strconv.Itoa(configuration.Rawport)
-	jobcount := 0
-	baseName := "printjobs/printjob-"
-
 	tcpAddr, err := net.ResolveTCPAddr("tcp", service)
-
+	
 	listener, err := net.ListenTCP("tcp", tcpAddr)
 	checkError(err)
+	
+	var filename string
+	jobcount := 0
+	baseName := "printjobs/printjob-"
 
 	fmt.Println("Started Listening to print requests...")
 	for {
@@ -96,13 +89,44 @@ func handleRawPrintJob(conn net.Conn, filename string, configuration Configurati
 	fmt.Printf("Saved file %s \n", filename)
 
 	if (configuration.OpenViewer) {
-		// Start default viewer
 	    abs, _ := filepath.Abs(filename)
-		fmt.Printf("Start viewer for %s \n", abs)
-
-		cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", abs)
-		cmd.Start()
+		contentType, _ := GetFileContentType(abs)
+		if (strings.HasSuffix(contentType, "pdf")) {
+			fmt.Printf("Start viewer for %s \n", abs)
+			
+			cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", abs)
+			cmd.Start()
+		} else {			
+		    fmt.Println("Viewer not started, content Type of file is: " + contentType )
+		}
 	}
+}
+
+func GetFileContentType(filename string) (string, error) {
+
+   file, err := os.Open(filename)
+
+   if err != nil {
+      panic(err)
+   }
+
+   defer file.Close()
+
+   // to sniff the content type only the first 512 bytes are used.
+   buf := make([]byte, 512)
+   _, err = file.Read(buf)
+   if err != nil {
+      return "", err
+   }
+
+   // the function that actually does the trick
+   contentType := http.DetectContentType(buf)
+
+   if err != nil {
+      panic(err)
+   }
+
+   return contentType, nil
 }
 
 func checkError(err error) {
