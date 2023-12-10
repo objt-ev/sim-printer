@@ -72,18 +72,18 @@ func handleRawPrintJob(conn net.Conn, filename string, configuration Configurati
 	// close connection on exit
 	defer conn.Close()
 
-	fmt.Printf("Receiving PrintJob %s \n", filename)
+	fmt.Printf("Receiving PrintJob %s\n", filename)
 
 	file, err := os.Create(filename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
+		fmt.Fprintf(os.Stderr, "Fatal error: %s\n", err.Error())
 		return
 	}
 	defer file.Close()
 
 	_, err = io.Copy(file, conn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
+		fmt.Fprintf(os.Stderr, "Fatal error: %s\n", err.Error())
 		return
 	}
 	fmt.Printf("Saved file %s \n", filename)
